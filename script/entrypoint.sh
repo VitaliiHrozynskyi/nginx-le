@@ -1,34 +1,36 @@
 #!/bin/sh
 echo "start nginx"
-
+#sleep 6000
 #set TZ
 cp /usr/share/zoneinfo/${TZ} /etc/localtime
 echo ${TZ} > /etc/timezone
 
-#setup ssl keys
+##setup ssl keys
 echo "ssl_key=${SSL_KEY:=le-key.pem}, ssl_cert=${SSL_CERT:=le-crt.pem}, ssl_chain_cert=${SSL_CHAIN_CERT:=le-chain-crt.pem}"
-SSL_KEY=/etc/nginx/ssl/${SSL_KEY}
-SSL_CERT=/etc/nginx/ssl/${SSL_CERT}
-SSL_CHAIN_CERT=/etc/nginx/ssl/${SSL_CHAIN_CERT}
-
+#
 mkdir -p /etc/nginx/conf.d
 mkdir -p /etc/nginx/ssl
 
 #collect services
-SERVICES=$(find "/etc/nginx/" -type f -maxdepth 1 -name "service*.conf")
 
-#copy /etc/nginx/service*.conf if any of service*.conf mounted
-if [ ${#SERVICES} -ne 0 ]; then
-    cp -fv /etc/nginx/service*.conf /etc/nginx/conf.d/
-fi
+SERVICES=$(find "/etc/nginx/services" -type f -name "*.conf")
+echo $SERVICES;
+# prepare domain for mounting
+for mountFile in $SERVICES; do
+  echo domainName;
+  domainName=$(sed -n "s/.*nginx-le-domain\s*\(.*\)\s*/\1/p" $mountFile);
+  domainDir="/etc/nginx/ssl/$domainName"
+  confFile=/etc/nginx/conf.d/"$domainName".conf
+  mkdir -m 0700 -p "$domainDir";
+  cp -fv $mountFile $confFile
 
-#replace SSL_KEY, SSL_CERT and SSL_CHAIN_CERT by actual keys
-sed -i "s|SSL_KEY|${SSL_KEY}|g" /etc/nginx/conf.d/*.conf
-sed -i "s|SSL_CERT|${SSL_CERT}|g" /etc/nginx/conf.d/*.conf
-sed -i "s|SSL_CHAIN_CERT|${SSL_CHAIN_CERT}|g" /etc/nginx/conf.d/*.conf
-
-#replace LE_FQDN
-sed -i "s|LE_FQDN|${LE_FQDN}|g" /etc/nginx/conf.d/*.conf
+  sed -i "s|SSL_KEY|${domainDir}/${SSL_KEY}|g" $confFile
+  sed -i "s|SSL_CERT|${domainDir}/${SSL_CERT}|g" $confFile
+  sed -i "s|SSL_CHAIN_CERT|${domainDir}/${SSL_CHAIN_CERT}|g" $confFile
+  if [[ ! -f ${domainDir}/$SSL_KEY || ! -f ${domainDir}/$SSL_CERT || ! -f ${domainDir}/$SSL_CHAIN_CERT ]]; then
+    ./openssl.sh $domainName $domainDir $SSL_KEY $SSL_CERT $SSL_CHAIN_CERT
+  fi
+done
 
 #generate dhparams.pem
 if [ ! -f /etc/nginx/ssl/dhparams.pem ]; then
@@ -38,22 +40,35 @@ if [ ! -f /etc/nginx/ssl/dhparams.pem ]; then
     chmod 600 dhparams.pem
 fi
 
-#disable ssl configuration and let it run without SSL
-mv -v /etc/nginx/conf.d /etc/nginx/conf.d.disabled
-
 (
- sleep 5 #give nginx time to start
- echo "start letsencrypt updater"
- while :
- do
-    echo "trying to update letsencrypt ..."
-    /le.sh
+  sleep 5 #give nginx time to start
+  echo "start letsencrypt updater"
+  while :
+  do
     rm -f /etc/nginx/conf.d/default.conf 2>/dev/null #on the first run remove default config, conflicting on 80
-    mv -v /etc/nginx/conf.d.disabled /etc/nginx/conf.d 2>/dev/null #on the first run enable config back
-    echo "reload nginx with ssl"
+    restart=false;
+    delay=10d;
+    for mountFile in $SERVICES; do
+      domainName=$(sed -n "s/.*nginx-le-domain\s*\(.*\)\s*/\1/p" $mountFile);
+      domainDir="/etc/nginx/ssl/$domainName"
+      confFile=/etc/nginx/conf.d/"$domainName".conf
+
+      echo "trying to update letsencrypt for $domainName..."
+      /le.sh $domainName $domainDir $SSL_KEY $SSL_CERT $SSL_CHAIN_CERT
+      success=$(echo $?);
+      if [ $success -eq 1 ]; then
+        delay=15m
+      elif [ $success -eq 2 ]; then
+        restart=true;
+      fi
+    done
+
+    if [ restart ]; then
+      echo "reload nginx with ssl"
     nginx -s reload
-    sleep 10d
- done
+    fi
+    sleep $delay
+  done
 ) &
 
 nginx -g "daemon off;"
