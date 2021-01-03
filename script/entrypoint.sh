@@ -51,16 +51,17 @@ fi
     delay=10d;
     for mountFile in $SERVICES; do
       domainName=$(sed -n "s/.*nginx-le-domain\s*\(.*\)\s*/\1/p" $mountFile);
-      domainDir="/etc/nginx/ssl/$domainName"
-      confFile=/etc/nginx/conf.d/"$domainName".conf
-
-      echo "trying to update letsencrypt for $domainName..."
-      /le.sh $domainName $domainDir $SSL_KEY $SSL_CERT $SSL_CHAIN_CERT
-      success=$(echo $?);
-      if [ $success -eq 1 ]; then
-        delay=15m
-      elif [ $success -eq 2 ]; then
-        restart=true;
+      # skip LE domain if there is no le-domain var in conf file.
+      if [[ $domainName != '' ]]; then
+        domainDir="/etc/nginx/ssl/$domainName"
+        confFile=/etc/nginx/conf.d/"$domainName".conf
+        /le.sh $domainName $domainDir $SSL_KEY $SSL_CERT $SSL_CHAIN_CERT
+        success=$(echo $?);
+        if [ $success -eq 1 ]; then
+          delay=15m
+        elif [ $success -eq 2 ]; then
+          restart=true;
+        fi
       fi
     done
 
