@@ -18,10 +18,11 @@ if [ "$LETSENCRYPT" != "true" ]; then
 fi
 
 # redirection to /dev/null to remove "Certificate will not expire" output
-if [ -f ${SSL_CERT} ] && openssl x509 -checkend ${renew_before} -noout -in ${SSL_CERT} > /dev/null ; then
+
 echo "trying to update letsencrypt for $SERVER in $OUT_DIR..."
+if [ -f ${OUT_DIR}/${SSL_CERT} ] && openssl x509 -checkend ${renew_before} -noout -in ${OUT_DIR}/${SSL_CERT} > /dev/null ; then
     # egrep to remove leading whitespaces
-    CERT_FQDNS=$(openssl x509 -in ${SSL_CERT} -text -noout | egrep -o 'DNS.*')
+    CERT_FQDNS=$(openssl x509 -in ${OUT_DIR}/${SSL_CERT} -text -noout | egrep -o 'DNS.*')
     echo "Certificate FQDNS = $CERT_FQDNS"
 
     # run and catch exit code separately because couldn't embed $@ into `if` line properly
