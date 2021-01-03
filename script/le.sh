@@ -19,8 +19,10 @@ fi
 
 # redirection to /dev/null to remove "Certificate will not expire" output
 if [ -f ${SSL_CERT} ] && openssl x509 -checkend ${renew_before} -noout -in ${SSL_CERT} > /dev/null ; then
+echo "trying to update letsencrypt for $SERVER in $OUT_DIR..."
     # egrep to remove leading whitespaces
     CERT_FQDNS=$(openssl x509 -in ${SSL_CERT} -text -noout | egrep -o 'DNS.*')
+    echo "Certificate FQDNS = $CERT_FQDNS"
 
     # run and catch exit code separately because couldn't embed $@ into `if` line properly
     set -- $(echo ${SERVER} | tr ',' '\n'); for element in "$@"; do echo ${CERT_FQDNS} | grep -q $element ; done
@@ -36,8 +38,8 @@ if [ -f ${SSL_CERT} ] && openssl x509 -checkend ${renew_before} -noout -in ${SSL
 fi
 
 echo "letsencrypt certificate will expire soon or missing, renewing... for $SERVER"
+echo "running \"-t -n --agree-tos --renew-by-default --email "${LE_EMAIL}" --webroot -w /usr/share/nginx/html -d ${SERVER}\"";
 
-echo "-t -n --agree-tos --renew-by-default --email "${LE_EMAIL}" --webroot -w /usr/share/nginx/html -d ${SERVER}";
 certbot certonly -t -n --agree-tos --renew-by-default --email "${LE_EMAIL}" --webroot -w /usr/share/nginx/html -d ${SERVER}
 le_result=$?
 if [ ${le_result} -ne 0 ]; then

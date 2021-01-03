@@ -17,7 +17,7 @@ SERVICES=$(find "/etc/nginx/services" -type f -name "*.conf")
 echo $SERVICES;
 # prepare domain for mounting
 for mountFile in $SERVICES; do
-  echo domainName;
+  echo $domainName;
   domainName=$(sed -n "s/.*nginx-le-domain\s*\(.*\)\s*/\1/p" $mountFile);
   domainDir="/etc/nginx/ssl/$domainName"
   confFile=/etc/nginx/conf.d/"$domainName".conf
@@ -28,6 +28,7 @@ for mountFile in $SERVICES; do
   sed -i "s|SSL_CERT|${domainDir}/${SSL_CERT}|g" $confFile
   sed -i "s|SSL_CHAIN_CERT|${domainDir}/${SSL_CHAIN_CERT}|g" $confFile
   if [[ ! -f ${domainDir}/$SSL_KEY || ! -f ${domainDir}/$SSL_CERT || ! -f ${domainDir}/$SSL_CHAIN_CERT ]]; then
+    echo "certificate for $domainName not found, lets create a self signed one to ensure NGINX can start"
     ./openssl.sh $domainName $domainDir $SSL_KEY $SSL_CERT $SSL_CHAIN_CERT
   fi
 done
